@@ -1,0 +1,18 @@
+---------------------------------------------------------------------------
+NCDrill File Report For: Blue Pill Clock.PcbDoc   18/02/2021  01:59:22
+---------------------------------------------------------------------------
+
+Layer Pair : Top Layer to Bottom Layer
+ASCII RoundHoles File : Blue Pill Clock.TXT
+
+Tool         Hole Size           Hole Type     Hole Count Plated       Tool Travel
+---------------------------------------------------------------------------
+T1        12mil (0.3048mm)         Round          83               17.73 Inch (450.47 mm)
+T2        35mil (0.889mm)          Round          52               7.72 Inch (196.21 mm)
+T3        39.37mil (1mm)           Round          148              22.94 Inch (582.56 mm)
+T4        40mil (1.016mm)          Round          40               6.10 Inch (154.94 mm)
+T5        157.48mil (3.99999mm)    Round          5                10.48 Inch (266.31 mm)
+---------------------------------------------------------------------------
+Totals                                            328              64.98 Inch (1650.49 mm)
+
+Total Processing Time (hh:mm:ss) : 00:00:01

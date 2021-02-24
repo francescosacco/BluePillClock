@@ -1,0 +1,5 @@
+DRC Rules Export File for PCB: C:\Users\Francesco\Dropbox\Projetos\GIT - STM32 Clock\BluePillClock\Hardware\BluePill Clock Project\Blue Pill Clock.PcbDoc
+RuleKind=ShortCircuit|RuleName=ShortCircuit|Scope=Board|Allowed=0
+RuleKind=Clearance|RuleName=Clearance|Scope=Board|Minimum=10.00
+RuleKind=Width|RuleName=Width|Scope=Board|Minimum=10.00
+RuleKind=SolderMaskExpansion|RuleName=SolderMaskExpansion|Scope=Board|Minimum=4.00
