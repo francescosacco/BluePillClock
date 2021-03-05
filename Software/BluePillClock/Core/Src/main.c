@@ -44,8 +44,23 @@
 /* Private variables ---------------------------------------------------------*/
 RTC_HandleTypeDef hrtc;
 
-osThreadId defaultTaskHandle;
+/* Definitions for defaultTask */
+osThreadId_t defaultTaskHandle;
+const osThreadAttr_t defaultTask_attributes = {
+  .name = "defaultTask",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
+};
 /* USER CODE BEGIN PV */
+
+/* Definitions for rtcRead_Task */
+osThreadId_t rtcRead_Task_Handle;
+const osThreadAttr_t rtcRead_Task_attributes = {
+  .name = "rtcRead_Task",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
+};
+
 
 /* USER CODE END PV */
 
@@ -53,9 +68,11 @@ osThreadId defaultTaskHandle;
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_RTC_Init(void);
-void StartDefaultTask(void const * argument);
+void StartDefaultTask(void *argument);
 
 /* USER CODE BEGIN PFP */
+
+void rtcRead_Task( void * argument) ;
 
 /* USER CODE END PFP */
 
@@ -97,6 +114,9 @@ int main(void)
 
   /* USER CODE END 2 */
 
+  /* Init scheduler */
+  osKernelInitialize();
+
   /* USER CODE BEGIN RTOS_MUTEX */
   /* add mutexes, ... */
   /* USER CODE END RTOS_MUTEX */
@@ -114,13 +134,16 @@ int main(void)
   /* USER CODE END RTOS_QUEUES */
 
   /* Create the thread(s) */
-  /* definition and creation of defaultTask */
-  osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 128);
-  defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
+  /* creation of defaultTask */
+  defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
-  /* add threads, ... */
+  rtcRead_Task_Handle = osThreadNew(rtcRead_Task, NULL, &rtcRead_Task_attributes);
   /* USER CODE END RTOS_THREADS */
+
+  /* USER CODE BEGIN RTOS_EVENTS */
+  /* add events, ... */
+  /* USER CODE END RTOS_EVENTS */
 
   /* Start scheduler */
   osKernelStart();
@@ -150,11 +173,11 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_LSI|RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE|RCC_OSCILLATORTYPE_LSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
   RCC_OscInitStruct.HSEPredivValue = RCC_HSE_PREDIV_DIV1;
+  RCC_OscInitStruct.LSEState = RCC_LSE_ON;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-  RCC_OscInitStruct.LSIState = RCC_LSI_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
   RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL9;
@@ -176,7 +199,7 @@ void SystemClock_Config(void)
     Error_Handler();
   }
   PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_RTC|RCC_PERIPHCLK_USB;
-  PeriphClkInit.RTCClockSelection = RCC_RTCCLKSOURCE_LSI;
+  PeriphClkInit.RTCClockSelection = RCC_RTCCLKSOURCE_LSE;
   PeriphClkInit.UsbClockSelection = RCC_USBCLKSOURCE_PLL_DIV1_5;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
   {
@@ -196,6 +219,9 @@ static void MX_RTC_Init(void)
 
   /* USER CODE END RTC_Init 0 */
 
+  RTC_TimeTypeDef sTime = {0};
+  RTC_DateTypeDef DateToUpdate = {0};
+
   /* USER CODE BEGIN RTC_Init 1 */
 
   /* USER CODE END RTC_Init 1 */
@@ -203,8 +229,32 @@ static void MX_RTC_Init(void)
   */
   hrtc.Instance = RTC;
   hrtc.Init.AsynchPrediv = RTC_AUTO_1_SECOND;
-  hrtc.Init.OutPut = RTC_OUTPUTSOURCE_ALARM;
+  hrtc.Init.OutPut = RTC_OUTPUTSOURCE_NONE;
   if (HAL_RTC_Init(&hrtc) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /* USER CODE BEGIN Check_RTC_BKUP */
+
+  /* USER CODE END Check_RTC_BKUP */
+
+  /** Initialize RTC and set the Time and Date
+  */
+  sTime.Hours = 0x0;
+  sTime.Minutes = 0x0;
+  sTime.Seconds = 0x0;
+
+  if (HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BCD) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  DateToUpdate.WeekDay = RTC_WEEKDAY_MONDAY;
+  DateToUpdate.Month = RTC_MONTH_JANUARY;
+  DateToUpdate.Date = 0x1;
+  DateToUpdate.Year = 0x0;
+
+  if (HAL_RTC_SetDate(&hrtc, &DateToUpdate, RTC_FORMAT_BCD) != HAL_OK)
   {
     Error_Handler();
   }
@@ -230,17 +280,17 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(BP_LED_GPIO_Port, BP_LED_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(BP_LED_GPIO_Port, BP_LED_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, BP_6_Pin|BP_10_Pin|BP_5_Pin|BP_1_Pin
-                          |BP_0_Pin|BP_4_Pin|BP_9_Pin|BP_8_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, BP_06_Pin|BP_10_Pin|BP_05_Pin|BP_01_Pin
+                          |BP_00_Pin|BP_04_Pin|BP_09_Pin|BP_08_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, BP_B_Pin|BP_F_Pin|BP_G_Pin|BP_A_Pin
                           |BP_E_Pin|BP_D_Pin|BP_C_Pin|BP_P_Pin
-                          |BP_11_Pin|BP_2_Pin|BP_7_Pin|BP_12_Pin
-                          |BP_3_Pin|BP_13_Pin, GPIO_PIN_RESET);
+                          |BP_11_Pin|BP_02_Pin|BP_07_Pin|BP_12_Pin
+                          |BP_03_Pin|BP_13_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : BP_LED_Pin */
   GPIO_InitStruct.Pin = BP_LED_Pin;
@@ -249,10 +299,10 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(BP_LED_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : BP_6_Pin BP_10_Pin BP_5_Pin BP_1_Pin
-                           BP_0_Pin BP_4_Pin BP_9_Pin BP_8_Pin */
-  GPIO_InitStruct.Pin = BP_6_Pin|BP_10_Pin|BP_5_Pin|BP_1_Pin
-                          |BP_0_Pin|BP_4_Pin|BP_9_Pin|BP_8_Pin;
+  /*Configure GPIO pins : BP_06_Pin BP_10_Pin BP_05_Pin BP_01_Pin
+                           BP_00_Pin BP_04_Pin BP_09_Pin BP_08_Pin */
+  GPIO_InitStruct.Pin = BP_06_Pin|BP_10_Pin|BP_05_Pin|BP_01_Pin
+                          |BP_00_Pin|BP_04_Pin|BP_09_Pin|BP_08_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -260,32 +310,72 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pins : BP_B_Pin BP_F_Pin BP_G_Pin BP_A_Pin
                            BP_E_Pin BP_D_Pin BP_C_Pin BP_P_Pin
-                           BP_11_Pin BP_2_Pin BP_7_Pin BP_12_Pin
-                           BP_3_Pin BP_13_Pin */
+                           BP_11_Pin BP_02_Pin BP_07_Pin BP_12_Pin
+                           BP_03_Pin BP_13_Pin */
   GPIO_InitStruct.Pin = BP_B_Pin|BP_F_Pin|BP_G_Pin|BP_A_Pin
                           |BP_E_Pin|BP_D_Pin|BP_C_Pin|BP_P_Pin
-                          |BP_11_Pin|BP_2_Pin|BP_7_Pin|BP_12_Pin
-                          |BP_3_Pin|BP_13_Pin;
+                          |BP_11_Pin|BP_02_Pin|BP_07_Pin|BP_12_Pin
+                          |BP_03_Pin|BP_13_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : BOOT1_Pin */
-  GPIO_InitStruct.Pin = BOOT1_Pin;
+  /*Configure GPIO pins : BP_BOOT1_Pin BP_NOTUSED_0_Pin */
+  GPIO_InitStruct.Pin = BP_BOOT1_Pin|BP_NOTUSED_0_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(BOOT1_GPIO_Port, &GPIO_InitStruct);
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /*Configure GPIO pins : BP_SW1_Pin BP_SW2_Pin */
   GPIO_InitStruct.Pin = BP_SW1_Pin|BP_SW2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : BP_NOTUSED_2_Pin BP_NOTUSED_1_Pin */
+  GPIO_InitStruct.Pin = BP_NOTUSED_2_Pin|BP_NOTUSED_1_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
 }
 
 /* USER CODE BEGIN 4 */
+
+void rtcRead_Task( void * argument)
+{
+    HAL_StatusTypeDef s_retHal ;
+    int s32_ret ;
+
+    RTC_TimeTypeDef s_timePrevious ;
+    RTC_TimeTypeDef s_timeCurrent  ;
+
+    ( void ) memset( &s_timePrevious , 0x00 , sizeof( s_timePrevious ) ) ;
+    ( void ) memset( &s_timeCurrent  , 0x00 , sizeof( s_timeCurrent  ) ) ;
+
+    for( ; /* EVER */ ; )
+    {
+        s_retHal = HAL_RTC_GetTime( &hrtc , &s_timeCurrent , RTC_FORMAT_BIN ) ;
+        if( HAL_OK != s_retHal )
+        {
+            continue ;
+        }
+
+        s32_ret = memcmp( &s_timeCurrent , &s_timePrevious , sizeof( s_timeCurrent ) ) ;
+        if( 0 != s32_ret )
+        {
+            ( void ) memcpy( &s_timePrevious , &s_timeCurrent , sizeof( s_timePrevious ) ) ;
+            HAL_GPIO_WritePin(BP_LED_GPIO_Port, BP_LED_Pin, GPIO_PIN_RESET);
+        }
+        else
+        {
+            HAL_GPIO_WritePin(BP_LED_GPIO_Port, BP_LED_Pin, GPIO_PIN_SET);
+        }
+
+        osDelay(100);
+    }
+}
 
 /* USER CODE END 4 */
 
@@ -296,7 +386,7 @@ static void MX_GPIO_Init(void)
   * @retval None
   */
 /* USER CODE END Header_StartDefaultTask */
-void StartDefaultTask(void const * argument)
+void StartDefaultTask(void *argument)
 {
   /* init code for USB_DEVICE */
   MX_USB_DEVICE_Init();
@@ -304,9 +394,33 @@ void StartDefaultTask(void const * argument)
   /* Infinite loop */
   for(;;)
   {
-    osDelay(1);
+    osDelay(100);
+    HAL_GPIO_WritePin(BP_LED_GPIO_Port, BP_LED_Pin, GPIO_PIN_SET);
+    osDelay(900);
+    HAL_GPIO_WritePin(BP_LED_GPIO_Port, BP_LED_Pin, GPIO_PIN_RESET);
   }
   /* USER CODE END 5 */
+}
+
+ /**
+  * @brief  Period elapsed callback in non blocking mode
+  * @note   This function is called  when TIM1 interrupt took place, inside
+  * HAL_TIM_IRQHandler(). It makes a direct call to HAL_IncTick() to increment
+  * a global variable "uwTick" used as application time base.
+  * @param  htim : TIM handle
+  * @retval None
+  */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+  /* USER CODE BEGIN Callback 0 */
+
+  /* USER CODE END Callback 0 */
+  if (htim->Instance == TIM1) {
+    HAL_IncTick();
+  }
+  /* USER CODE BEGIN Callback 1 */
+
+  /* USER CODE END Callback 1 */
 }
 
 /**
