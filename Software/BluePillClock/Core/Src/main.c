@@ -25,6 +25,10 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
+#include "Queue.h"
+#include "usbd_cdc_if.h"
+#include "time.h"
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -88,7 +92,7 @@ void rtcRead_Task( void * argument) ;
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-
+    QueueHandle_t xQueue_time ;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -97,6 +101,8 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
+
+  xQueue_time = xQueueCreate( 8 , sizeof( time_t ) );
 
   /* USER CODE END Init */
 
@@ -135,10 +141,10 @@ int main(void)
 
   /* Create the thread(s) */
   /* creation of defaultTask */
-  defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
+  defaultTaskHandle = osThreadNew(StartDefaultTask, ( void * ) xQueue_time , &defaultTask_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
-  rtcRead_Task_Handle = osThreadNew(rtcRead_Task, NULL, &rtcRead_Task_attributes);
+  rtcRead_Task_Handle = osThreadNew(rtcRead_Task, ( void * ) xQueue_time , &rtcRead_Task_attributes);
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_EVENTS */
@@ -351,6 +357,11 @@ void rtcRead_Task( void * argument)
     RTC_TimeTypeDef s_timePrevious ;
     RTC_TimeTypeDef s_timeCurrent  ;
 
+    QueueHandle_t xQueue_time ;
+    time_t epoch = 0 ;
+
+    xQueue_time = ( QueueHandle_t ) argument ;
+
     ( void ) memset( &s_timePrevious , 0x00 , sizeof( s_timePrevious ) ) ;
     ( void ) memset( &s_timeCurrent  , 0x00 , sizeof( s_timeCurrent  ) ) ;
 
@@ -367,6 +378,10 @@ void rtcRead_Task( void * argument)
         {
             ( void ) memcpy( &s_timePrevious , &s_timeCurrent , sizeof( s_timePrevious ) ) ;
             HAL_GPIO_WritePin(BP_LED_GPIO_Port, BP_LED_Pin, GPIO_PIN_RESET);
+
+            epoch++ ;
+
+            xQueueSend( xQueue_time, &epoch, 100 );
         }
         else
         {
@@ -391,13 +406,34 @@ void StartDefaultTask(void *argument)
   /* init code for USB_DEVICE */
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 5 */
+
+  uint8_t buf_tx[ 64 ] ;
+  uint16_t buf_tx_size ;
+  uint8_t u8_ret ;
+
+  QueueHandle_t xQueue_time ;
+  time_t epoch ;
+
+
+  xQueue_time = ( QueueHandle_t ) argument ;
+
   /* Infinite loop */
-  for(;;)
+  for( ; /* EVER */ ; )
   {
-    osDelay(100);
-    HAL_GPIO_WritePin(BP_LED_GPIO_Port, BP_LED_Pin, GPIO_PIN_SET);
-    osDelay(900);
-    HAL_GPIO_WritePin(BP_LED_GPIO_Port, BP_LED_Pin, GPIO_PIN_RESET);
+      if( xQueueReceive( xQueue_time , &epoch, 5000 ) == pdPASS)
+      {
+          buf_tx_size = sprintf( ( char * ) buf_tx , "%lu\n" , epoch ) ;
+      }
+      else
+      {
+          buf_tx_size = sprintf( ( char * ) buf_tx , "No time received!\n" ) ;
+      }
+
+      u8_ret = CDC_Transmit_FS( buf_tx , buf_tx_size ) ;
+      if( USBD_OK != u8_ret )
+      {
+          // TODO!
+      }
   }
   /* USER CODE END 5 */
 }
