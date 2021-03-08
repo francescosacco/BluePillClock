@@ -33,7 +33,11 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
+typedef struct
+{
+    QueueHandle_t queueTime ;
+    QueueHandle_t queueDsp  ;
+} Queue_readTime_t ;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -65,6 +69,13 @@ const osThreadAttr_t rtcRead_Task_attributes = {
   .priority = (osPriority_t) osPriorityNormal,
 };
 
+/* Definitions for dspTask */
+osThreadId_t dspTask_Handle;
+const osThreadAttr_t dspTask_attributes = {
+  .name = "dspTask",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
+};
 
 /* USER CODE END PV */
 
@@ -77,6 +88,7 @@ void StartDefaultTask(void *argument);
 /* USER CODE BEGIN PFP */
 
 void rtcRead_Task( void * argument) ;
+void dspTask( void * argument) ;
 
 /* USER CODE END PFP */
 
@@ -92,7 +104,7 @@ void rtcRead_Task( void * argument) ;
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-    QueueHandle_t xQueue_time ;
+    Queue_readTime_t Queue_readTime ;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -102,7 +114,8 @@ int main(void)
 
   /* USER CODE BEGIN Init */
 
-  xQueue_time = xQueueCreate( 8 , sizeof( time_t ) );
+  Queue_readTime.queueTime = xQueueCreate( 8 , sizeof( time_t ) );
+  Queue_readTime.queueDsp  = xQueueCreate( 8 , sizeof( uint8_t ) * 14 ) ;
 
   /* USER CODE END Init */
 
@@ -141,10 +154,11 @@ int main(void)
 
   /* Create the thread(s) */
   /* creation of defaultTask */
-  defaultTaskHandle = osThreadNew(StartDefaultTask, ( void * ) xQueue_time , &defaultTask_attributes);
+//  defaultTaskHandle = osThreadNew(StartDefaultTask, ( void * ) Queue_readTime.queueTime , &defaultTask_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
-  rtcRead_Task_Handle = osThreadNew(rtcRead_Task, ( void * ) xQueue_time , &rtcRead_Task_attributes);
+//  rtcRead_Task_Handle = osThreadNew(rtcRead_Task , ( void * ) &Queue_readTime , &rtcRead_Task_attributes);
+  dspTask_Handle      = osThreadNew(dspTask      , ( void * ) Queue_readTime.queueDsp  , &dspTask_attributes     );
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_EVENTS */
@@ -357,10 +371,10 @@ void rtcRead_Task( void * argument)
     RTC_TimeTypeDef s_timePrevious ;
     RTC_TimeTypeDef s_timeCurrent  ;
 
-    QueueHandle_t xQueue_time ;
+    Queue_readTime_t * p_Queue_readTime ;
     time_t epoch = 0 ;
 
-    xQueue_time = ( QueueHandle_t ) argument ;
+    p_Queue_readTime = ( Queue_readTime_t * ) argument ;
 
     ( void ) memset( &s_timePrevious , 0x00 , sizeof( s_timePrevious ) ) ;
     ( void ) memset( &s_timeCurrent  , 0x00 , sizeof( s_timeCurrent  ) ) ;
@@ -381,7 +395,7 @@ void rtcRead_Task( void * argument)
 
             epoch++ ;
 
-            xQueueSend( xQueue_time, &epoch, 100 );
+            xQueueSend( p_Queue_readTime->queueTime , &epoch, 100 );
         }
         else
         {
@@ -389,6 +403,144 @@ void rtcRead_Task( void * argument)
         }
 
         osDelay(100);
+    }
+}
+
+void dspTask( void * argument)
+{
+    /**********
+     *
+     * Number | PGFE.DCBA | Value
+     *   0    | 0011.1111 | 3Fh
+     *   1    | 0000.0110 | 06h
+     *   2    | 0101.1011 | 5Bh
+     *   3    | 0100.1111 | 4Fh
+     *   4    | 0110.0110 | 66h
+     *   5    | 0110.1101 | 6Dh
+     *   6    | 0111.1101 | 7Dh
+     *   7    | 0000.0111 | 07h
+     *   8    | 0111.1111 | 7Fh
+     *   9    | 0110.1111 | 6Fh
+     *   A    | 0111.0111 | 77h
+     *   B    | 0111.1100 | 7Ch
+     *   C    | 0011.1001 | 39h
+     *   D    | 0101.1110 | 5Eh
+     *   E    | 0111.1001 | 79h
+     *   F    | 0111.0001 | 71h
+     *
+     **********/
+    //                          0      1      2      3      4      5      6      7      8      9      A      B      C      D      E      F
+    uint8_t u8_numbers[] = { 0x3F , 0x06 , 0x5B , 0x4F , 0x66 , 0x6D , 0x7D , 0x07 , 0x7F , 0x6F , 0x77 , 0x7C , 0x39 , 0x5E , 0x79 , 0x71 } ;
+
+    /**********
+     *
+     * Number | GPFE.DCBA | Value
+     *   0    | 0011.1111 | 3Fh
+     *   1    | 0000.0110 | 06h
+     *   2    | 1001.1011 | 9Bh
+     *   3    | 1000.1111 | 8Fh
+     *   4    | 1010.0110 | A6h
+     *   5    | 1010.1101 | ADh
+     *   6    | 1011.1101 | BDh
+     *   7    | 0000.0111 | 07h
+     *   8    | 1011.1111 | BFh
+     *   9    | 1010.1111 | AFh
+     *   A    | 1011.0111 | B7h
+     *   B    | 1011.1100 | BCh
+     *   C    | 0011.1001 | 39h
+     *   D    | 1001.1110 | 9Eh
+     *   E    | 1011.1001 | B9h
+     *   F    | 1011.0001 | B1h
+     *
+     **********/
+    //                                0      1      2      3      4      5      6      7      8      9      A      B      C      D      E      F
+    uint8_t u8_numUpSideDown[] = { 0x3F , 0x06 , 0x9B , 0x8F , 0xA6 , 0xAD , 0xBD , 0x07 , 0xBF , 0xAF , 0xB7 , 0xBC , 0x39 , 0x9E , 0xB9 , 0xB1 } ;
+
+
+    uint8_t u8_count ;
+    uint8_t u8_index ;
+    uint8_t segment ;
+
+    struct _DISPLAY_GPIO_
+    {
+        GPIO_TypeDef * GPIOx    ;
+        uint16_t       GPIO_Pin ;
+    } displayGpio[] = { { .GPIOx = BP_00_GPIO_Port , .GPIO_Pin = BP_00_Pin } ,
+                        { .GPIOx = BP_01_GPIO_Port , .GPIO_Pin = BP_01_Pin } ,
+                        { .GPIOx = BP_02_GPIO_Port , .GPIO_Pin = BP_02_Pin } ,
+                        { .GPIOx = BP_03_GPIO_Port , .GPIO_Pin = BP_03_Pin } ,
+                        { .GPIOx = BP_04_GPIO_Port , .GPIO_Pin = BP_04_Pin } ,
+                        { .GPIOx = BP_05_GPIO_Port , .GPIO_Pin = BP_05_Pin } ,
+                        { .GPIOx = BP_06_GPIO_Port , .GPIO_Pin = BP_06_Pin } ,
+                        { .GPIOx = BP_07_GPIO_Port , .GPIO_Pin = BP_07_Pin } ,
+                        { .GPIOx = BP_08_GPIO_Port , .GPIO_Pin = BP_08_Pin } ,
+                        { .GPIOx = BP_09_GPIO_Port , .GPIO_Pin = BP_09_Pin } ,
+                        { .GPIOx = BP_10_GPIO_Port , .GPIO_Pin = BP_10_Pin } ,
+                        { .GPIOx = BP_11_GPIO_Port , .GPIO_Pin = BP_11_Pin } ,
+                        { .GPIOx = BP_12_GPIO_Port , .GPIO_Pin = BP_12_Pin } ,
+                        { .GPIOx = BP_13_GPIO_Port , .GPIO_Pin = BP_13_Pin } };
+
+    struct _SEGMENT_GPIO_
+    {
+        GPIO_TypeDef * GPIOx    ;
+        uint16_t       GPIO_Pin ;
+    } segmentGpio[] = { { .GPIOx = BP_A_GPIO_Port , .GPIO_Pin = BP_A_Pin } ,
+                        { .GPIOx = BP_B_GPIO_Port , .GPIO_Pin = BP_B_Pin } ,
+                        { .GPIOx = BP_C_GPIO_Port , .GPIO_Pin = BP_C_Pin } ,
+                        { .GPIOx = BP_D_GPIO_Port , .GPIO_Pin = BP_D_Pin } ,
+                        { .GPIOx = BP_E_GPIO_Port , .GPIO_Pin = BP_E_Pin } ,
+                        { .GPIOx = BP_F_GPIO_Port , .GPIO_Pin = BP_F_Pin } ,
+                        { .GPIOx = BP_G_GPIO_Port , .GPIO_Pin = BP_G_Pin } ,
+                        { .GPIOx = BP_P_GPIO_Port , .GPIO_Pin = BP_P_Pin } } ;
+
+    for( u8_count = 0 ; u8_count < 14 ; u8_count++ )
+    {
+        HAL_GPIO_WritePin( displayGpio[ u8_count ].GPIOx , displayGpio[ u8_count ].GPIO_Pin, GPIO_PIN_RESET);
+    }
+
+    for( u8_count = 0 ; u8_count < 8 ; u8_count++ )
+    {
+        HAL_GPIO_WritePin( segmentGpio[ u8_count ].GPIOx , segmentGpio[ u8_count ].GPIO_Pin, GPIO_PIN_RESET);
+    }
+
+uint16_t timeX ;
+uint8_t idx = 0 ;
+
+    for( u8_index = 0 , timeX = 0 ; /* EVER */ ; )
+    {
+        timeX++ ;
+        if( timeX >= 1000 )
+        {
+            timeX = 0 ;
+            idx++ ;
+        }
+
+        osDelay(1);
+
+        HAL_GPIO_WritePin( displayGpio[ u8_index ].GPIOx , displayGpio[ u8_index ].GPIO_Pin, GPIO_PIN_RESET);
+
+        u8_index++ ;
+        if( u8_index >= 14 )
+        {
+            u8_index = 0 ;
+        }
+
+        if( u8_index != 10 && u8_index != 12 )
+        {
+            segment = u8_numbers[ idx & 0x0F ] ;
+        }
+        else
+        {
+            segment = u8_numUpSideDown[ idx & 0x0F ] ;
+        }
+
+        for( u8_count = 0 ; u8_count < 8 ; u8_count++ )
+        {
+            GPIO_PinState pinState = ( segment & ( 0x01 << u8_count ) ) ? ( GPIO_PIN_SET ) : ( GPIO_PIN_RESET ) ;
+            HAL_GPIO_WritePin( segmentGpio[ u8_count ].GPIOx , segmentGpio[ u8_count ].GPIO_Pin, pinState);
+        }
+
+        HAL_GPIO_WritePin( displayGpio[ u8_index ].GPIOx , displayGpio[ u8_index ].GPIO_Pin, GPIO_PIN_SET);
     }
 }
 
